@@ -22,9 +22,10 @@ import {
   type InsertClientLendproConfig,
   type InsertClientBranding,
   type InsertClientFeatures,
+  type InsertClientVisualizer,
 } from "@db/db";
-import { ClientDeployer } from "../../scripts/deploy-client";
-import { createRailwayApiClient } from "../../scripts/railway-api";
+import { ClientDeployer } from "../scripts/deploy-client";
+import { createRailwayApiClient } from "../scripts/railway-api";
 import { nanoid } from "nanoid";
 import { encryptPassword, decryptPassword } from "./crypto";
 
