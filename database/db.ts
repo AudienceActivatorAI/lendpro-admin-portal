@@ -5,6 +5,7 @@ import {
   clientLendproConfig,
   clientBranding,
   clientFeatures,
+  clientVisualizer,
   deployments,
   clientAnalytics,
   adminUsers,
@@ -17,6 +18,8 @@ import {
   type InsertClientBranding,
   type ClientFeatures,
   type InsertClientFeatures,
+  type ClientVisualizer,
+  type InsertClientVisualizer,
   type Deployment,
   type InsertDeployment,
   type ClientAnalytics,
@@ -57,7 +60,8 @@ export async function createClient(
   client: InsertClient,
   lendpro: InsertClientLendproConfig,
   branding?: InsertClientBranding,
-  features?: InsertClientFeatures
+  features?: InsertClientFeatures,
+  visualizer?: InsertClientVisualizer
 ): Promise<Client> {
   const db = await getAdminDb();
   
@@ -86,6 +90,14 @@ export async function createClient(
     });
   }
   
+  // Insert visualizer config if provided
+  if (visualizer) {
+    await db.insert(clientVisualizer).values({
+      ...visualizer,
+      clientId: client.id,
+    });
+  }
+  
   // Return created client
   const [created] = await db.select().from(clients).where(eq(clients.id, client.id));
   return created;
@@ -96,6 +108,7 @@ export async function getClient(clientId: string): Promise<{
   lendpro: ClientLendproConfig;
   branding?: ClientBranding;
   features?: ClientFeatures;
+  visualizer?: ClientVisualizer;
 } | null> {
   const db = await getAdminDb();
   
@@ -105,12 +118,14 @@ export async function getClient(clientId: string): Promise<{
   const [lendpro] = await db.select().from(clientLendproConfig).where(eq(clientLendproConfig.clientId, clientId));
   const [branding] = await db.select().from(clientBranding).where(eq(clientBranding.clientId, clientId));
   const [features] = await db.select().from(clientFeatures).where(eq(clientFeatures.clientId, clientId));
+  const [visualizer] = await db.select().from(clientVisualizer).where(eq(clientVisualizer.clientId, clientId));
   
   return {
     client,
     lendpro,
     branding,
     features,
+    visualizer,
   };
 }
 
@@ -167,6 +182,25 @@ export async function updateClientFeatures(
     await db.update(clientFeatures).set(updates).where(eq(clientFeatures.clientId, clientId));
   } else {
     await db.insert(clientFeatures).values({
+      ...updates,
+      clientId,
+    });
+  }
+}
+
+export async function updateClientVisualizer(
+  clientId: string,
+  updates: Partial<InsertClientVisualizer>
+): Promise<void> {
+  const db = await getAdminDb();
+  
+  // Check if visualizer config exists
+  const [existing] = await db.select().from(clientVisualizer).where(eq(clientVisualizer.clientId, clientId));
+  
+  if (existing) {
+    await db.update(clientVisualizer).set(updates).where(eq(clientVisualizer.clientId, clientId));
+  } else {
+    await db.insert(clientVisualizer).values({
       ...updates,
       clientId,
     });
@@ -324,6 +358,7 @@ export {
   clientLendproConfig,
   clientBranding,
   clientFeatures,
+  clientVisualizer,
   deployments,
   clientAnalytics,
   adminUsers,
@@ -336,6 +371,8 @@ export {
   type InsertClientBranding,
   type ClientFeatures,
   type InsertClientFeatures,
+  type ClientVisualizer,
+  type InsertClientVisualizer,
   type Deployment,
   type InsertDeployment,
   type ClientAnalytics,

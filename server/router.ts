@@ -9,6 +9,7 @@ import {
   updateClientLendpro,
   updateClientBranding,
   updateClientFeatures,
+  updateClientVisualizer,
   deleteClient as dbDeleteClient,
   createDeployment,
   updateDeployment,
@@ -91,6 +92,13 @@ export const appRouter = router({
               companyName: z.string().optional(),
             })
             .optional(),
+          visualizer: z
+            .object({
+              enabled: z.boolean().default(true),
+              embedCode: z.string().optional(),
+              autoSyncApiKey: z.string().optional(),
+            })
+            .optional(),
           features: z
             .object({
               preApproval: z.boolean().default(true),
@@ -98,7 +106,7 @@ export const appRouter = router({
               orderTracking: z.boolean().default(true),
               customerAccounts: z.boolean().default(true),
               productComparison: z.boolean().default(true),
-              visualizer3D: z.boolean().default(true),
+              cartOnly: z.boolean().default(false),
             })
             .optional(),
         })
@@ -137,7 +145,14 @@ export const appRouter = router({
             }
           : undefined;
         
-        await createClient(clientData, lendproData, brandingData, featuresData);
+        const visualizerData: Omit<InsertClientVisualizer, "id"> | undefined = input.visualizer
+          ? {
+              clientId,
+              ...input.visualizer,
+            }
+          : undefined;
+        
+        await createClient(clientData, lendproData, brandingData, featuresData, visualizerData);
         
         // Log action
         await logAdminAction({
@@ -342,7 +357,7 @@ export const appRouter = router({
           orderTracking: z.boolean().optional(),
           customerAccounts: z.boolean().optional(),
           productComparison: z.boolean().optional(),
-          visualizer3D: z.boolean().optional(),
+          cartOnly: z.boolean().optional(),
         })
       )
       .mutation(async ({ input }) => {
@@ -351,6 +366,32 @@ export const appRouter = router({
         
         await logAdminAction({
           action: "update_client_features",
+          resourceType: "client",
+          resourceId: clientId,
+          details: JSON.stringify(updates),
+        });
+        
+        return { success: true };
+      }),
+
+    /**
+     * Update visualizer configuration
+     */
+    updateVisualizer: publicProcedure
+      .input(
+        z.object({
+          clientId: z.string(),
+          enabled: z.boolean().optional(),
+          embedCode: z.string().optional(),
+          autoSyncApiKey: z.string().optional(),
+        })
+      )
+      .mutation(async ({ input }) => {
+        const { clientId, ...updates } = input;
+        await updateClientVisualizer(clientId, updates);
+        
+        await logAdminAction({
+          action: "update_client_visualizer",
           resourceType: "client",
           resourceId: clientId,
           details: JSON.stringify(updates),

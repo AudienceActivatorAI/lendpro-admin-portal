@@ -25,6 +25,14 @@ export default function CreateClient() {
       primaryColor: "#2563eb",
       companyName: "",
     },
+    visualizer: {
+      enabled: true,
+      embedCode: "",
+      autoSyncApiKey: "",
+    },
+    features: {
+      cartOnly: false,
+    },
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -204,6 +212,88 @@ export default function CreateClient() {
                 onChange={(e) => updateField("branding.primaryColor", e.target.value)}
               />
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Visualizer Configuration */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Visualizer Configuration</CardTitle>
+            <CardDescription>3D visualizer and AutoSync integration</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                id="visualizerEnabled"
+                checked={formData.visualizer.enabled}
+                onChange={(e) => updateField("visualizer.enabled", e.target.checked)}
+                className="w-4 h-4"
+              />
+              <label htmlFor="visualizerEnabled" className="text-sm font-medium">
+                Enable 3D Visualizer
+              </label>
+            </div>
+            
+            {formData.visualizer.enabled && (
+              <>
+                <div>
+                  <label className="block text-sm font-medium mb-1">
+                    Visualizer Embed Code
+                  </label>
+                  <textarea
+                    rows={4}
+                    className="w-full px-3 py-2 border rounded-md font-mono text-sm"
+                    value={formData.visualizer.embedCode}
+                    onChange={(e) => updateField("visualizer.embedCode", e.target.value)}
+                    placeholder="<script src='https://...'></script>"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Paste the embed code provided by the visualizer platform
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">
+                    AutoSync API Key
+                  </label>
+                  <input
+                    type="text"
+                    className="w-full px-3 py-2 border rounded-md"
+                    value={formData.visualizer.autoSyncApiKey}
+                    onChange={(e) => updateField("visualizer.autoSyncApiKey", e.target.value)}
+                    placeholder="your-autosync-api-key"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    API key for syncing product data with the visualizer
+                  </p>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Features */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Features</CardTitle>
+            <CardDescription>Configure enabled features</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                id="cartOnly"
+                checked={formData.features.cartOnly}
+                onChange={(e) => updateField("features.cartOnly", e.target.checked)}
+                className="w-4 h-4"
+              />
+              <label htmlFor="cartOnly" className="text-sm font-medium">
+                Cart Only Mode (No visualizer, cart and checkout only)
+              </label>
+            </div>
+            <p className="text-xs text-gray-500">
+              Enable this for clients who only need the shopping cart and LendPro integration without the visualizer
+            </p>
           </CardContent>
         </Card>
 

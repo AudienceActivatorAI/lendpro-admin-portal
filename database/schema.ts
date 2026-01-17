@@ -95,7 +95,7 @@ export const clientFeatures = mysqlTable("client_features", {
   orderTracking: boolean("order_tracking").default(true).notNull(),
   customerAccounts: boolean("customer_accounts").default(true).notNull(),
   productComparison: boolean("product_comparison").default(true).notNull(),
-  visualizer3D: boolean("visualizer_3d").default(true).notNull(),
+  cartOnly: boolean("cart_only").default(false).notNull(),
   
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
@@ -103,6 +103,24 @@ export const clientFeatures = mysqlTable("client_features", {
 
 export type ClientFeatures = typeof clientFeatures.$inferSelect;
 export type InsertClientFeatures = typeof clientFeatures.$inferInsert;
+
+/**
+ * Visualizer configuration for each client
+ */
+export const clientVisualizer = mysqlTable("client_visualizer", {
+  id: int("id").autoincrement().primaryKey(),
+  clientId: varchar("client_id", { length: 36 }).notNull().references(() => clients.id, { onDelete: "cascade" }),
+  
+  enabled: boolean("enabled").default(true).notNull(),
+  embedCode: text("embed_code"),
+  autoSyncApiKey: varchar("autosync_api_key", { length: 500 }),
+  
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+
+export type ClientVisualizer = typeof clientVisualizer.$inferSelect;
+export type InsertClientVisualizer = typeof clientVisualizer.$inferInsert;
 
 /**
  * Deployment history
