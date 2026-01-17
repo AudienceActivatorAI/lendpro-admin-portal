@@ -152,7 +152,7 @@ export class ClientDeployer {
       { key: "LENDPRO_SALES_NAME", value: config.lendpro.salesName },
       
       // Database (reference MySQL service)
-      { key: "DATABASE_URL", value: `${{${mysqlServiceId}.MYSQL_URL}}` },
+      { key: "DATABASE_URL", value: "${{" + mysqlServiceId + ".MYSQL_URL}}" },
       
       // OAuth (optional)
       { key: "OAUTH_SERVER_URL", value: "http://localhost:3000" },
