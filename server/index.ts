@@ -1,6 +1,7 @@
 import express from "express";
 import { createServer } from "http";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
+import cookieParser from "cookie-parser";
 import path from "path";
 import fs from "fs";
 import { appRouter } from "./router";
@@ -18,9 +19,10 @@ await migrateAdminUsersTable();
 const app = express();
 const server = createServer(app);
 
-// Body parser
+// Body parser and cookie parser
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ limit: "10mb", extended: true }));
+app.use(cookieParser());
 
 // Health check
 app.get("/api/health", (req, res) => {
