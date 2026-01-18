@@ -10,7 +10,16 @@ async function migrateAdminUsersTable() {
   try {
     const db = await getAdminDb();
     
-    // Drop old table if it exists
+    // Disable foreign key checks temporarily
+    console.log("[Migration] Disabling foreign key checks...");
+    await db.execute(`SET FOREIGN_KEY_CHECKS = 0`);
+    
+    // Drop tables that reference admin_users
+    console.log("[Migration] Dropping dependent tables...");
+    await db.execute(`DROP TABLE IF EXISTS audit_log`);
+    await db.execute(`DROP TABLE IF EXISTS sessions`);
+    
+    // Drop old admin_users table
     console.log("[Migration] Dropping old admin_users table...");
     await db.execute(`DROP TABLE IF EXISTS admin_users`);
     
@@ -50,10 +59,37 @@ async function migrateAdminUsersTable() {
       )
     `);
     
+    // Recreate audit_log table
+    console.log("[Migration] Recreating audit_log table...");
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS audit_log (
+        id int AUTO_INCREMENT PRIMARY KEY,
+        admin_user_id int,
+        action varchar(100) NOT NULL,
+        resource_type varchar(50) NOT NULL,
+        resource_id varchar(36),
+        details text,
+        ip_address varchar(45),
+        user_agent text,
+        created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    
+    // Re-enable foreign key checks
+    console.log("[Migration] Re-enabling foreign key checks...");
+    await db.execute(`SET FOREIGN_KEY_CHECKS = 1`);
+    
     console.log("[Migration] ✅ Migration completed successfully!");
     return true;
   } catch (error) {
     console.error("[Migration] ❌ Migration failed:", error);
+    // Try to re-enable foreign key checks even if migration fails
+    try {
+      const db = await getAdminDb();
+      await db.execute(`SET FOREIGN_KEY_CHECKS = 1`);
+    } catch (e) {
+      // Ignore if this fails
+    }
     return false;
   }
 }
