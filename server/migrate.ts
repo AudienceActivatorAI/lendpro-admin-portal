@@ -4,11 +4,47 @@ import { getAdminDb } from "../database/db";
  * Migration: Fix admin_users table structure
  * This script drops the old table and recreates it with the correct schema
  */
+
+let migrationRunning = false;
+let migrationComplete = false;
+
 async function migrateAdminUsersTable() {
+  // Prevent duplicate runs
+  if (migrationRunning) {
+    console.log("[Migration] Already running, skipping...");
+    return true;
+  }
+  
+  if (migrationComplete) {
+    console.log("[Migration] Already completed, skipping...");
+    return true;
+  }
+  
+  migrationRunning = true;
   console.log("[Migration] Starting admin_users table migration...");
   
   try {
     const db = await getAdminDb();
+    
+    // Check if admin_users table already has password_hash column
+    try {
+      const [columns] = await db.execute(`
+        SELECT COLUMN_NAME 
+        FROM INFORMATION_SCHEMA.COLUMNS 
+        WHERE TABLE_SCHEMA = DATABASE() 
+        AND TABLE_NAME = 'admin_users' 
+        AND COLUMN_NAME = 'password_hash'
+      `) as any;
+      
+      if (columns && columns.length > 0) {
+        console.log("[Migration] Table already has correct schema, skipping...");
+        migrationComplete = true;
+        migrationRunning = false;
+        return true;
+      }
+    } catch (e) {
+      // Table doesn't exist, continue with migration
+    }
     
     // Disable foreign key checks temporarily
     console.log("[Migration] Disabling foreign key checks...");
@@ -40,10 +76,13 @@ async function migrateAdminUsersTable() {
       }
     }
     
+    // Wait a moment to ensure DROP is complete
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
     // Create new admin_users table with correct structure
     console.log("[Migration] Creating new admin_users table...");
     await db.execute(`
-      CREATE TABLE admin_users (
+      CREATE TABLE IF NOT EXISTS admin_users (
         id varchar(36) PRIMARY KEY,
         name varchar(255) NOT NULL,
         email varchar(320) NOT NULL UNIQUE,
@@ -63,7 +102,7 @@ async function migrateAdminUsersTable() {
     // Create sessions table
     console.log("[Migration] Creating sessions table...");
     await db.execute(`
-      CREATE TABLE sessions (
+      CREATE TABLE IF NOT EXISTS sessions (
         id varchar(100) PRIMARY KEY,
         user_id varchar(36) NOT NULL,
         token text NOT NULL,
@@ -79,7 +118,7 @@ async function migrateAdminUsersTable() {
     // Recreate audit_log table (without foreign key for now to avoid issues)
     console.log("[Migration] Creating audit_log table...");
     await db.execute(`
-      CREATE TABLE audit_log (
+      CREATE TABLE IF NOT EXISTS audit_log (
         id int AUTO_INCREMENT PRIMARY KEY,
         admin_user_id int,
         action varchar(100) NOT NULL,
@@ -97,9 +136,12 @@ async function migrateAdminUsersTable() {
     await db.execute(`SET FOREIGN_KEY_CHECKS = 1`);
     
     console.log("[Migration] ✅ Migration completed successfully!");
+    migrationComplete = true;
+    migrationRunning = false;
     return true;
   } catch (error) {
     console.error("[Migration] ❌ Migration failed:", error);
+    migrationRunning = false;
     // Try to re-enable foreign key checks even if migration fails
     try {
       const db = await getAdminDb();
