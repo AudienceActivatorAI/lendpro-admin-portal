@@ -11,5 +11,5 @@ restartPolicyMaxRetries = 10
 
 [healthcheck]
 path = "/api/health"
-timeout = 100
-interval = 60
+timeout = 30
+interval = 10
