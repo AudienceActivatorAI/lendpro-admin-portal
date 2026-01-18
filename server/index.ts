@@ -5,10 +5,15 @@ import path from "path";
 import fs from "fs";
 import { appRouter } from "./router";
 import { createContext } from "./trpc";
+import { migrateAdminUsersTable } from "./migrate";
 import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Run migration on startup
+console.log("[Server] Running database migration...");
+await migrateAdminUsersTable();
 
 const app = express();
 const server = createServer(app);
