@@ -85,10 +85,18 @@ if (process.env.NODE_ENV === "production") {
 const PORT = parseInt(process.env.PORT || "3001");
 const HOST = process.env.HOST || "0.0.0.0";
 
+console.log("[Server] Environment variables:");
+console.log("[Server] - PORT env:", process.env.PORT);
+console.log("[Server] - Parsed PORT:", PORT);
+console.log("[Server] - HOST:", HOST);
+console.log("[Server] - NODE_ENV:", process.env.NODE_ENV);
+
 server.listen(PORT, HOST, () => {
   console.log(`[Admin Portal] Server running on http://${HOST}:${PORT}`);
   console.log(`[Admin Portal] Environment: ${process.env.NODE_ENV}`);
   console.log(`[Admin Portal] API: http://${HOST}:${PORT}/api/trpc`);
+  console.log(`[Admin Portal] Health check: http://${HOST}:${PORT}/api/health`);
+  console.log(`[Admin Portal] Waiting for health checks from Railway...`);
 });
 
 // Graceful shutdown
