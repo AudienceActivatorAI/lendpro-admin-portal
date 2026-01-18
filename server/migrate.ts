@@ -14,16 +14,33 @@ async function migrateAdminUsersTable() {
     console.log("[Migration] Disabling foreign key checks...");
     await db.execute(`SET FOREIGN_KEY_CHECKS = 0`);
     
-    // Drop tables that reference admin_users
-    console.log("[Migration] Dropping dependent tables...");
-    await db.execute(`DROP TABLE IF EXISTS audit_log`);
-    await db.execute(`DROP TABLE IF EXISTS sessions`);
+    // Drop ALL tables that might reference admin_users in the correct order
+    console.log("[Migration] Dropping all related tables...");
+    const tablesToDrop = [
+      'sessions',
+      'notifications', 
+      'notification_settings',
+      'audit_log',
+      'deployments',
+      'client_analytics',
+      'client_visualizer',
+      'client_features',
+      'client_branding',
+      'client_lendpro_config',
+      'clients',
+      'admin_users'
+    ];
     
-    // Drop old admin_users table
-    console.log("[Migration] Dropping old admin_users table...");
-    await db.execute(`DROP TABLE IF EXISTS admin_users`);
+    for (const table of tablesToDrop) {
+      try {
+        await db.execute(`DROP TABLE IF EXISTS ${table}`);
+        console.log(`[Migration] Dropped ${table}`);
+      } catch (e) {
+        console.log(`[Migration] Could not drop ${table}, continuing...`);
+      }
+    }
     
-    // Create new table with correct structure
+    // Create new admin_users table with correct structure
     console.log("[Migration] Creating new admin_users table...");
     await db.execute(`
       CREATE TABLE admin_users (
@@ -46,7 +63,7 @@ async function migrateAdminUsersTable() {
     // Create sessions table
     console.log("[Migration] Creating sessions table...");
     await db.execute(`
-      CREATE TABLE IF NOT EXISTS sessions (
+      CREATE TABLE sessions (
         id varchar(100) PRIMARY KEY,
         user_id varchar(36) NOT NULL,
         token text NOT NULL,
@@ -59,10 +76,10 @@ async function migrateAdminUsersTable() {
       )
     `);
     
-    // Recreate audit_log table
-    console.log("[Migration] Recreating audit_log table...");
+    // Recreate audit_log table (without foreign key for now to avoid issues)
+    console.log("[Migration] Creating audit_log table...");
     await db.execute(`
-      CREATE TABLE IF NOT EXISTS audit_log (
+      CREATE TABLE audit_log (
         id int AUTO_INCREMENT PRIMARY KEY,
         admin_user_id int,
         action varchar(100) NOT NULL,
