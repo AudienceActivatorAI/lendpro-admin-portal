@@ -1,12 +1,6 @@
+import { initTRPC } from "@trpc/server";
 import { z } from "zod";
-import { TRPCError } from "@trpc/server";
-import {
-  router,
-  publicProcedure,
-  protectedProcedure,
-  adminProcedure,
-  superAdminProcedure,
-} from "./trpc";
+import superjson from "superjson";
 import {
   createClient,
   getClient,
@@ -29,105 +23,29 @@ import {
   type InsertClientBranding,
   type InsertClientFeatures,
   type InsertClientVisualizer,
-} from "../database/db";
+} from "@db/db";
 import { ClientDeployer } from "../scripts/deploy-client";
 import { createRailwayApiClient } from "../scripts/railway-api";
 import { nanoid } from "nanoid";
 import { encryptPassword, decryptPassword } from "./crypto";
-import { register, login, logout, hasRole } from "./auth";
-import { getEmailService } from "./email";
+
+const t = initTRPC.create({
+  transformer: superjson,
+});
+
+export const router = t.router;
+export const publicProcedure = t.procedure;
 
 /**
- * Admin Portal tRPC Router with Authentication
+ * Admin Portal tRPC Router
  */
 export const appRouter = router({
-  // ===== Authentication =====
-  auth: router({
-    /**
-     * Register a new admin user
-     */
-    register: publicProcedure
-      .input(
-        z.object({
-          name: z.string().min(1, "Name is required"),
-          email: z.string().email("Invalid email"),
-          password: z.string().min(8, "Password must be at least 8 characters"),
-        })
-      )
-      .mutation(async ({ input }) => {
-        const result = await register({
-          name: input.name,
-          email: input.email,
-          password: input.password,
-          role: "viewer", // Default role for new registrations
-        });
-
-        if (!result.success) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: result.error || "Registration failed",
-          });
-        }
-
-        return {
-          user: result.user,
-          token: result.token,
-        };
-      }),
-
-    /**
-     * Login
-     */
-    login: publicProcedure
-      .input(
-        z.object({
-          email: z.string().email(),
-          password: z.string(),
-        })
-      )
-      .mutation(async ({ input }) => {
-        const result = await login({
-          email: input.email,
-          password: input.password,
-        });
-
-        if (!result.success) {
-          throw new TRPCError({
-            code: "UNAUTHORIZED",
-            message: result.error || "Invalid credentials",
-          });
-        }
-
-        return {
-          user: result.user,
-          token: result.token,
-        };
-      }),
-
-    /**
-     * Logout
-     */
-    logout: protectedProcedure.mutation(async ({ ctx }) => {
-      if (ctx.token) {
-        await logout(ctx.token);
-      }
-      return { success: true };
-    }),
-
-    /**
-     * Get current user
-     */
-    me: protectedProcedure.query(async ({ ctx }) => {
-      return ctx.user;
-    }),
-  }),
-
-  // ===== Client Operations (Protected) =====
+  // ===== Client Operations =====
   clients: router({
     /**
      * Get all clients
      */
-    list: protectedProcedure.query(async () => {
+    list: publicProcedure.query(async () => {
       const clients = await getAllClients();
       return clients;
     }),
@@ -135,29 +53,26 @@ export const appRouter = router({
     /**
      * Get a single client by ID
      */
-    get: protectedProcedure
+    get: publicProcedure
       .input(z.object({ id: z.string() }))
       .query(async ({ input }) => {
         const client = await getClient(input.id);
         if (!client) {
-          throw new TRPCError({
-            code: "NOT_FOUND",
-            message: `Client not found: ${input.id}`,
-          });
+          throw new Error(`Client not found: ${input.id}`);
         }
-
+        
         // Decrypt password before returning
         if (client.lendpro) {
           client.lendpro.password = decryptPassword(client.lendpro.password);
         }
-
+        
         return client;
       }),
 
     /**
-     * Create a new client (requires admin role)
+     * Create a new client and deploy to Railway
      */
-    create: adminProcedure
+    create: publicProcedure
       .input(
         z.object({
           name: z.string(),
@@ -197,76 +112,71 @@ export const appRouter = router({
             .optional(),
         })
       )
-      .mutation(async ({ input, ctx }) => {
+      .mutation(async ({ input }) => {
         const clientId = nanoid();
-
+        
         // Encrypt password
         const encryptedPassword = encryptPassword(input.lendpro.password);
-
+        
         // Create client in database
         const clientData: InsertClient = {
           id: clientId,
           name: input.name,
           domain: input.domain,
           status: "inactive",
-          createdBy: ctx.user.id,
         };
-
+        
         const lendproData: Omit<InsertClientLendproConfig, "id"> = {
           clientId,
           ...input.lendpro,
           password: encryptedPassword,
         };
-
+        
         const brandingData: Omit<InsertClientBranding, "id"> | undefined = input.branding
           ? {
               clientId,
               ...input.branding,
             }
           : undefined;
-
+        
         const featuresData: Omit<InsertClientFeatures, "id"> | undefined = input.features
           ? {
               clientId,
               ...input.features,
             }
           : undefined;
-
+        
         const visualizerData: Omit<InsertClientVisualizer, "id"> | undefined = input.visualizer
           ? {
               clientId,
               ...input.visualizer,
             }
           : undefined;
-
+        
         await createClient(clientData, lendproData, brandingData, featuresData, visualizerData);
-
+        
         // Log action
         await logAdminAction({
           action: "create_client",
           resourceType: "client",
           resourceId: clientId,
           details: JSON.stringify({ name: input.name, domain: input.domain }),
-          adminUserId: parseInt(ctx.user.id),
         });
-
+        
         return { clientId, message: "Client created successfully. Deploy to activate." };
       }),
 
     /**
-     * Deploy a client to Railway (requires admin role)
+     * Deploy a client to Railway
      */
-    deploy: adminProcedure
+    deploy: publicProcedure
       .input(z.object({ clientId: z.string() }))
-      .mutation(async ({ input, ctx }) => {
+      .mutation(async ({ input }) => {
         const client = await getClient(input.clientId);
         if (!client) {
-          throw new TRPCError({
-            code: "NOT_FOUND",
-            message: `Client not found: ${input.clientId}`,
-          });
+          throw new Error(`Client not found: ${input.clientId}`);
         }
-
+        
         // Create deployment record
         const deploymentId = nanoid();
         await createDeployment({
@@ -274,20 +184,17 @@ export const appRouter = router({
           clientId: input.clientId,
           status: "pending",
           deploymentType: client.client.railwayProjectId ? "redeploy" : "initial",
-          deployedBy: ctx.user.id,
         });
-
-        const emailService = getEmailService();
-
+        
         try {
           // Update client status
           await updateClient(input.clientId, { status: "deploying" });
           await updateDeployment(deploymentId, { status: "building" });
-
+          
           // Deploy to Railway
           const railwayClient = createRailwayApiClient();
           const deployer = new ClientDeployer(railwayClient);
-
+          
           const clientConfig = {
             id: client.client.id,
             name: client.client.name,
@@ -304,9 +211,9 @@ export const appRouter = router({
               status: client.client.status,
             },
           };
-
+          
           const result = await deployer.deployClient(clientConfig as any);
-
+          
           if (result.success) {
             // Update client with Railway info
             await updateClient(input.clientId, {
@@ -316,28 +223,20 @@ export const appRouter = router({
               serviceUrl: result.serviceUrl || undefined,
               lastDeployedAt: new Date(),
             });
-
+            
             await updateDeployment(deploymentId, {
               status: "success",
               completedAt: new Date(),
             });
-
+            
             // Log action
             await logAdminAction({
               action: "deploy_client",
               resourceType: "deployment",
               resourceId: deploymentId,
               details: JSON.stringify(result),
-              adminUserId: parseInt(ctx.user.id),
             });
-
-            // Send success email
-            await emailService.sendDeploymentSuccess(
-              ctx.user.email,
-              client.client.name,
-              result.serviceUrl
-            );
-
+            
             return { success: true, ...result };
           } else {
             await updateClient(input.clientId, { status: "failed" });
@@ -346,18 +245,8 @@ export const appRouter = router({
               errorMessage: result.error,
               completedAt: new Date(),
             });
-
-            // Send failure email
-            await emailService.sendDeploymentFailure(
-              ctx.user.email,
-              client.client.name,
-              result.error || "Unknown error"
-            );
-
-            throw new TRPCError({
-              code: "INTERNAL_SERVER_ERROR",
-              message: result.error || "Deployment failed",
-            });
+            
+            throw new Error(result.error || "Deployment failed");
           }
         } catch (error) {
           await updateClient(input.clientId, { status: "failed" });
@@ -366,22 +255,14 @@ export const appRouter = router({
             errorMessage: error instanceof Error ? error.message : String(error),
             completedAt: new Date(),
           });
-
-          // Send failure email
-          await emailService.sendDeploymentFailure(
-            ctx.user.email,
-            client.client.name,
-            error instanceof Error ? error.message : String(error)
-          );
-
           throw error;
         }
       }),
 
     /**
-     * Update client configuration (requires admin role)
+     * Update client configuration
      */
-    update: adminProcedure
+    update: publicProcedure
       .input(
         z.object({
           clientId: z.string(),
@@ -389,25 +270,24 @@ export const appRouter = router({
           domain: z.string().optional(),
         })
       )
-      .mutation(async ({ input, ctx }) => {
+      .mutation(async ({ input }) => {
         const { clientId, ...updates } = input;
         await updateClient(clientId, updates);
-
+        
         await logAdminAction({
           action: "update_client",
           resourceType: "client",
           resourceId: clientId,
           details: JSON.stringify(updates),
-          adminUserId: parseInt(ctx.user.id),
         });
-
+        
         return { success: true };
       }),
 
     /**
-     * Update LendPro configuration (requires admin role)
+     * Update LendPro configuration
      */
-    updateLendpro: adminProcedure
+    updateLendpro: publicProcedure
       .input(
         z.object({
           clientId: z.string(),
@@ -419,31 +299,30 @@ export const appRouter = router({
           apiUrl: z.string().optional(),
         })
       )
-      .mutation(async ({ input, ctx }) => {
+      .mutation(async ({ input }) => {
         const { clientId, password, ...otherUpdates } = input;
-
+        
         const updates: any = { ...otherUpdates };
         if (password) {
           updates.password = encryptPassword(password);
         }
-
+        
         await updateClientLendpro(clientId, updates);
-
+        
         await logAdminAction({
           action: "update_client_lendpro",
           resourceType: "client",
           resourceId: clientId,
           details: JSON.stringify({ ...otherUpdates, passwordUpdated: !!password }),
-          adminUserId: parseInt(ctx.user.id),
         });
-
+        
         return { success: true };
       }),
 
     /**
-     * Update branding (requires admin role)
+     * Update branding
      */
-    updateBranding: adminProcedure
+    updateBranding: publicProcedure
       .input(
         z.object({
           clientId: z.string(),
@@ -453,25 +332,24 @@ export const appRouter = router({
           companyName: z.string().optional(),
         })
       )
-      .mutation(async ({ input, ctx }) => {
+      .mutation(async ({ input }) => {
         const { clientId, ...updates } = input;
         await updateClientBranding(clientId, updates);
-
+        
         await logAdminAction({
           action: "update_client_branding",
           resourceType: "client",
           resourceId: clientId,
           details: JSON.stringify(updates),
-          adminUserId: parseInt(ctx.user.id),
         });
-
+        
         return { success: true };
       }),
 
     /**
-     * Update feature flags (requires admin role)
+     * Update feature flags
      */
-    updateFeatures: adminProcedure
+    updateFeatures: publicProcedure
       .input(
         z.object({
           clientId: z.string(),
@@ -483,25 +361,24 @@ export const appRouter = router({
           cartOnly: z.boolean().optional(),
         })
       )
-      .mutation(async ({ input, ctx }) => {
+      .mutation(async ({ input }) => {
         const { clientId, ...updates } = input;
         await updateClientFeatures(clientId, updates);
-
+        
         await logAdminAction({
           action: "update_client_features",
           resourceType: "client",
           resourceId: clientId,
           details: JSON.stringify(updates),
-          adminUserId: parseInt(ctx.user.id),
         });
-
+        
         return { success: true };
       }),
 
     /**
-     * Update visualizer configuration (requires admin role)
+     * Update visualizer configuration
      */
-    updateVisualizer: adminProcedure
+    updateVisualizer: publicProcedure
       .input(
         z.object({
           clientId: z.string(),
@@ -510,35 +387,31 @@ export const appRouter = router({
           autoSyncApiKey: z.string().optional(),
         })
       )
-      .mutation(async ({ input, ctx }) => {
+      .mutation(async ({ input }) => {
         const { clientId, ...updates } = input;
         await updateClientVisualizer(clientId, updates);
-
+        
         await logAdminAction({
           action: "update_client_visualizer",
           resourceType: "client",
           resourceId: clientId,
           details: JSON.stringify(updates),
-          adminUserId: parseInt(ctx.user.id),
         });
-
+        
         return { success: true };
       }),
 
     /**
-     * Delete a client (requires super admin role)
+     * Delete a client
      */
-    delete: superAdminProcedure
+    delete: publicProcedure
       .input(z.object({ clientId: z.string() }))
-      .mutation(async ({ input, ctx }) => {
+      .mutation(async ({ input }) => {
         const client = await getClient(input.clientId);
         if (!client) {
-          throw new TRPCError({
-            code: "NOT_FOUND",
-            message: "Client not found",
-          });
+          throw new Error("Client not found");
         }
-
+        
         // Delete from Railway if exists
         if (client.client.railwayProjectId) {
           try {
@@ -550,18 +423,17 @@ export const appRouter = router({
             // Continue with database deletion even if Railway deletion fails
           }
         }
-
+        
         // Delete from database
         await dbDeleteClient(input.clientId);
-
+        
         await logAdminAction({
           action: "delete_client",
           resourceType: "client",
           resourceId: input.clientId,
           details: JSON.stringify({ name: client.client.name }),
-          adminUserId: parseInt(ctx.user.id),
         });
-
+        
         return { success: true };
       }),
   }),
@@ -571,7 +443,7 @@ export const appRouter = router({
     /**
      * Get deployment history for a client
      */
-    history: protectedProcedure
+    history: publicProcedure
       .input(z.object({ clientId: z.string(), limit: z.number().default(10) }))
       .query(async ({ input }) => {
         return await getDeploymentHistory(input.clientId, input.limit);
@@ -583,7 +455,7 @@ export const appRouter = router({
     /**
      * Get analytics for a specific client
      */
-    client: protectedProcedure
+    client: publicProcedure
       .input(
         z.object({
           clientId: z.string(),
@@ -598,7 +470,7 @@ export const appRouter = router({
     /**
      * Get aggregate analytics across all clients
      */
-    aggregate: protectedProcedure
+    aggregate: publicProcedure
       .input(
         z.object({
           startDate: z.date(),
@@ -608,36 +480,14 @@ export const appRouter = router({
       .query(async ({ input }) => {
         return await getAggregateAnalytics(input.startDate, input.endDate);
       }),
-
-    /**
-     * Get dashboard summary statistics
-     */
-    dashboard: protectedProcedure.query(async () => {
-      const now = new Date();
-      const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-
-      const stats = await getAggregateAnalytics(weekAgo, now);
-      const clients = await getAllClients();
-
-      const activeClients = clients.filter((c) => c.client.status === "active").length;
-      const totalClients = clients.length;
-
-      return {
-        totalClients,
-        activeClients,
-        totalRevenue: stats.totalRevenue,
-        totalOrders: stats.totalOrders,
-        lendproApplications: stats.totalLendproApplications,
-      };
-    }),
   }),
 
   // ===== Audit Log Operations =====
   audit: router({
     /**
-     * Get audit logs (requires admin role)
+     * Get audit logs
      */
-    logs: adminProcedure
+    logs: publicProcedure
       .input(z.object({ limit: z.number().default(100) }))
       .query(async ({ input }) => {
         return await getAuditLogs(input.limit);

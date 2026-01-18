@@ -192,21 +192,113 @@ export type InsertClientAnalytics = typeof clientAnalytics.$inferInsert;
  * Admin users for the portal
  */
 export const adminUsers = mysqlTable("admin_users", {
-  id: int("id").autoincrement().primaryKey(),
-  openId: varchar("open_id", { length: 64 }).notNull().unique(),
+  id: varchar("id", { length: 36 }).primaryKey(),
   
-  name: text("name"),
-  email: varchar("email", { length: 320 }).notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  email: varchar("email", { length: 320 }).notNull().unique(),
+  passwordHash: text("password_hash").notNull(),
   
   role: mysqlEnum("role", ["super_admin", "admin", "viewer"]).default("viewer").notNull(),
   
+  // Email verification
+  emailVerified: boolean("email_verified").default(false).notNull(),
+  verificationToken: varchar("verification_token", { length: 100 }),
+  
+  // Password reset
+  resetToken: varchar("reset_token", { length: 100 }),
+  resetTokenExpiry: timestamp("reset_token_expiry"),
+  
+  // Status
+  isActive: boolean("is_active").default(true).notNull(),
+  
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
-  lastSignedIn: timestamp("last_signed_in").defaultNow().notNull(),
+  lastSignedIn: timestamp("last_signed_in"),
 });
 
 export type AdminUser = typeof adminUsers.$inferSelect;
 export type InsertAdminUser = typeof adminUsers.$inferInsert;
+
+/**
+ * Sessions table for JWT token management
+ */
+export const sessions = mysqlTable("sessions", {
+  id: varchar("id", { length: 100 }).primaryKey(),
+  userId: varchar("user_id", { length: 36 }).notNull().references(() => adminUsers.id, { onDelete: "cascade" }),
+  
+  token: text("token").notNull(),
+  ipAddress: varchar("ip_address", { length: 45 }),
+  userAgent: text("user_agent"),
+  
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  lastActivityAt: timestamp("last_activity_at").defaultNow().notNull(),
+});
+
+export type Session = typeof sessions.$inferSelect;
+export type InsertSession = typeof sessions.$inferInsert;
+
+/**
+ * Notification settings per user
+ */
+export const notificationSettings = mysqlTable("notification_settings", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: varchar("user_id", { length: 36 }).notNull().references(() => adminUsers.id, { onDelete: "cascade" }).unique(),
+  
+  // Email notifications
+  emailEnabled: boolean("email_enabled").default(true).notNull(),
+  notifyDeploymentSuccess: boolean("notify_deployment_success").default(true).notNull(),
+  notifyDeploymentFailure: boolean("notify_deployment_failure").default(true).notNull(),
+  notifyClientErrors: boolean("notify_client_errors").default(true).notNull(),
+  notifyUsageAlerts: boolean("notify_usage_alerts").default(true).notNull(),
+  
+  // Daily/weekly summaries
+  dailySummary: boolean("daily_summary").default(false).notNull(),
+  weeklySummary: boolean("weekly_summary").default(true).notNull(),
+  
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+
+export type NotificationSettings = typeof notificationSettings.$inferSelect;
+export type InsertNotificationSettings = typeof notificationSettings.$inferInsert;
+
+/**
+ * Notification history/log
+ */
+export const notifications = mysqlTable("notifications", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: varchar("user_id", { length: 36 }).notNull().references(() => adminUsers.id, { onDelete: "cascade" }),
+  
+  type: mysqlEnum("type", [
+    "deployment_success",
+    "deployment_failure",
+    "client_error",
+    "usage_alert",
+    "system_alert"
+  ]).notNull(),
+  
+  title: varchar("title", { length: 255 }).notNull(),
+  message: text("message").notNull(),
+  
+  // Related resources
+  clientId: varchar("client_id", { length: 36 }).references(() => clients.id, { onDelete: "set null" }),
+  deploymentId: varchar("deployment_id", { length: 36 }).references(() => deployments.id, { onDelete: "set null" }),
+  
+  // Delivery status
+  emailSent: boolean("email_sent").default(false).notNull(),
+  emailSentAt: timestamp("email_sent_at"),
+  emailError: text("email_error"),
+  
+  // Read status
+  read: boolean("read").default(false).notNull(),
+  readAt: timestamp("read_at"),
+  
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type Notification = typeof notifications.$inferSelect;
+export type InsertNotification = typeof notifications.$inferInsert;
 
 /**
  * Audit log for tracking admin actions
