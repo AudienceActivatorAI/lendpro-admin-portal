@@ -26,6 +26,7 @@ app.use(cookieParser());
 
 // Health check
 app.get("/api/health", (req, res) => {
+  console.log("[Health Check] Received health check request");
   res.json({
     status: "ok",
     timestamp: new Date().toISOString(),
