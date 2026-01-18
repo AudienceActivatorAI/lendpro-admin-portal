@@ -302,30 +302,6 @@ export async function deployClientFromFile(configPath: string): Promise<Deployme
   return await deployer.deployClient(config);
 }
 
-// CLI execution
-if (require.main === module) {
-  const configPath = process.argv[2];
-  
-  if (!configPath) {
-    console.error("Usage: tsx scripts/deploy-client.ts <config-file.json>");
-    process.exit(1);
-  }
-
-  deployClientFromFile(configPath)
-    .then((result) => {
-      if (result.success) {
-        console.log("\n✅ Deployment successful!");
-        console.log("Project ID:", result.projectId);
-        console.log("Project URL:", result.projectUrl);
-        console.log("Service URL:", result.serviceUrl);
-      } else {
-        console.error("\n❌ Deployment failed!");
-        console.error("Error:", result.error);
-        process.exit(1);
-      }
-    })
-    .catch((error) => {
-      console.error("\n❌ Deployment failed with exception:", error);
-      process.exit(1);
-    });
-}
+// CLI execution - ESM compatible check
+// This script is meant to be imported by the tRPC router, not run directly
+// If you need CLI functionality, use the lendpro-admin CLI tool instead
