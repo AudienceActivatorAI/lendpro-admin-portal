@@ -46,14 +46,37 @@ app.use(
 if (process.env.NODE_ENV === "production") {
   const distPath = path.join(process.cwd(), "dist", "public");
   
+  console.log("[Static] Looking for static files at:", distPath);
+  console.log("[Static] Directory exists:", fs.existsSync(distPath));
+  
   if (fs.existsSync(distPath)) {
-    app.use(express.static(distPath));
+    const files = fs.readdirSync(distPath);
+    console.log("[Static] Files in dist/public:", files);
     
-    app.use("*", (_req, res) => {
+    app.use(express.static(distPath, {
+      setHeaders: (res, filepath) => {
+        if (filepath.endsWith('.js')) {
+          res.setHeader('Content-Type', 'application/javascript');
+        } else if (filepath.endsWith('.css')) {
+          res.setHeader('Content-Type', 'text/css');
+        }
+      }
+    }));
+    
+    app.use("*", (req, res) => {
+      const ext = path.extname(req.originalUrl);
+      if (ext && ext !== '.html') {
+        console.log("[Static] 404 for asset:", req.originalUrl);
+        return res.status(404).send('Not found');
+      }
+      console.log("[Static] Serving index.html for:", req.originalUrl);
       res.sendFile(path.join(distPath, "index.html"));
     });
   } else {
     console.error("[Server] Build directory not found:", distPath);
+    app.use("*", (_req, res) => {
+      res.status(500).send(`Build directory not found: ${distPath}`);
+    });
   }
 }
 
